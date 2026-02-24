@@ -6,7 +6,7 @@ import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndP
 import { auth } from '../../firebaseConfig';
 
 const API_URL = "https://mental-api-e4ab.onrender.com/api/mental";
-
+// const API_URL = "https://mental-api-e4ab.onrender.com/api/mental";
 export default function App() {
   // 🌟 Firebaseが管理する「本物のユーザー情報」を入れる箱
   const [user, setUser] = useState<any>(null);
