@@ -1,42 +1,80 @@
+import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
 import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
-// 🌟 さっき作った「秘密の鍵」のファイルを読み込む！
-import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 
 const API_URL = "https://mental-api-e4ab.onrender.com/api/mental";
-// const API_URL = "https://mental-api-e4ab.onrender.com/api/mental";
-export default function App() {
-  // 🌟 Firebaseが管理する「本物のユーザー情報」を入れる箱
-  const [user, setUser] = useState<any>(null);
 
-  // ログイン画面用の入力欄
+export default function App() {
+  const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [mood, setMood] = useState(3);
   const [text, setText] = useState("");
   const [response, setResponse] = useState<string | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 🌟 アプリを開いた時に「誰がログインしているか」をFirebaseに確認する
+  // オンボーディング用
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [nickname, setNickname] = useState("");
+  const [ageGroup, setAgeGroup] = useState("");
+  const [worryGenre, setWorryGenre] = useState("");
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser); // ログインしていればユーザー情報が入り、していなければ null になる
+      setUser(currentUser);
     });
     return () => unsubscribe();
   }, []);
 
-  // ユーザー情報が変わった時（ログインした時）に履歴を取得する
   useEffect(() => {
     if (user) {
-      fetchHistory();
+      checkProfile();
     }
   }, [user]);
 
-  // 🌟 新規登録（アカウント作成）の処理
+  // プロフィールがあるか確認
+  const checkProfile = async () => {
+    try {
+      const res = await fetch(`${API_URL}/profile?uid=${user.uid}`);
+      if (res.status === 404) {
+        // プロフィール未登録 → オンボーディング表示
+        setShowOnboarding(true);
+      } else {
+        setShowOnboarding(false);
+        fetchHistory();
+      }
+    } catch (error) {
+      setShowOnboarding(false);
+      fetchHistory();
+    }
+  };
+
+  // プロフィール保存
+  const handleSaveProfile = async () => {
+    if (!nickname.trim()) {
+      Alert.alert("教えてにゃ", "お名前（あだ名）を入力してほしいにゃ🐾");
+      return;
+    }
+    try {
+      await fetch(`${API_URL}/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: user.uid,
+          nickname: nickname,
+          age_group: ageGroup,
+          worry_genre: worryGenre,
+        }),
+      });
+      setShowOnboarding(false);
+      fetchHistory();
+    } catch (error) {
+      Alert.alert("エラー", "保存できなかったにゃ…");
+    }
+  };
+
   const handleSignUp = async () => {
     try {
       await createUserWithEmailAndPassword(auth, email, password);
@@ -46,26 +84,24 @@ export default function App() {
     }
   };
 
-  // 🌟 ログインの処理
   const handleLogin = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      Alert.alert("成功", "ログインしたにゃ！");
     } catch (error: any) {
       Alert.alert("エラー", error.message);
     }
   };
 
-  // 🌟 ログアウトの処理
   const handleLogout = async () => {
     await signOut(auth);
+    setHistory([]);
+    setResponse(null);
+    setShowOnboarding(false);
   };
 
-  // 履歴取得（UIDを本物に変えました！）
   const fetchHistory = async () => {
     if (!user) return;
     try {
-      // 🌟 TEMP_UID ではなく、Firebaseの本物の user.uid を使う！
       const res = await fetch(`${API_URL}/history?uid=${user.uid}`);
       const data = await res.json();
       setHistory(data);
@@ -74,16 +110,14 @@ export default function App() {
     }
   };
 
-  // 気分送信（UIDを本物に変えました！）
   const handleCheckin = async () => {
     if (!user) return;
     setLoading(true);
     setResponse(null);
     try {
-      const res = await fetch(`${API_URL}/checkin`, {
+      const res = await fetch(`${API_URL}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 🌟 TEMP_UID ではなく、Firebaseの本物の user.uid を送る！
         body: JSON.stringify({ uid: user.uid, mood_score: mood, text: text }),
       });
       const data = await res.json();
@@ -102,35 +136,19 @@ export default function App() {
     return icons[score] || '😐';
   };
 
-  // 🚪 ログイン画面の部品（本物のメール/パスワード入力に変わりました！）
+  // ログイン画面
   if (!user) {
     return (
       <SafeAreaView style={styles.loginContainer}>
         <Text style={styles.loginTitle}>🐾 ネコメンタル</Text>
         <Text style={styles.loginSubtitle}>あなたの心に寄り添う、猫のカウンセラー</Text>
-        
         <View style={styles.loginCard}>
           <Text style={styles.loginPrompt}>ログインしてはじめるにゃ</Text>
-          
-          <TextInput
-            style={styles.authInput}
-            placeholder="メールアドレス"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.authInput}
-            placeholder="パスワード (6文字以上)"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-          
+          <TextInput style={styles.authInput} placeholder="メールアドレス" value={email} onChangeText={setEmail} autoCapitalize="none" />
+          <TextInput style={styles.authInput} placeholder="パスワード (6文字以上)" value={password} onChangeText={setPassword} secureTextEntry />
           <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
             <Text style={styles.loginBtnText}>ログイン</Text>
           </TouchableOpacity>
-          
           <TouchableOpacity style={styles.signupBtn} onPress={handleSignUp}>
             <Text style={styles.signupBtnText}>新しく登録する</Text>
           </TouchableOpacity>
@@ -139,7 +157,43 @@ export default function App() {
     );
   }
 
-  // 📖 いつもの記録画面の部品
+  // オンボーディング画面
+  if (showOnboarding) {
+    return (
+      <SafeAreaView style={styles.loginContainer}>
+        <Text style={styles.loginTitle}>🐾 はじめまして！</Text>
+        <Text style={styles.loginSubtitle}>あなたのことを少し教えてにゃ🐾</Text>
+        <View style={styles.loginCard}>
+          <Text style={styles.onboardingLabel}>お名前（あだ名でもOK）</Text>
+          <TextInput style={styles.authInput} placeholder="例：たろう、みーちゃん" value={nickname} onChangeText={setNickname} />
+
+          <Text style={styles.onboardingLabel}>年代</Text>
+          <View style={styles.optionRow}>
+            {['10代', '20代', '30代', '40代', '50代以上'].map((age) => (
+              <TouchableOpacity key={age} style={[styles.optionBtn, ageGroup === age && styles.optionBtnSelected]} onPress={() => setAgeGroup(age)}>
+                <Text style={[styles.optionBtnText, ageGroup === age && styles.optionBtnTextSelected]}>{age}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.onboardingLabel}>気になること</Text>
+          <View style={styles.optionRow}>
+            {['仕事', '人間関係', '健康', '将来', 'その他'].map((genre) => (
+              <TouchableOpacity key={genre} style={[styles.optionBtn, worryGenre === genre && styles.optionBtnSelected]} onPress={() => setWorryGenre(genre)}>
+                <Text style={[styles.optionBtnText, worryGenre === genre && styles.optionBtnTextSelected]}>{genre}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity style={styles.loginBtn} onPress={handleSaveProfile}>
+            <Text style={styles.loginBtnText}>はじめるにゃ！</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // メイン画面
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -154,35 +208,15 @@ export default function App() {
           <Text style={styles.label}>今日もお疲れ様！えらいにゃ〜！</Text>
           <View style={styles.moodContainer}>
             {[1, 2, 3, 4, 5].map((m) => (
-              <TouchableOpacity
-                key={m}
-                onPress={() => setMood(m)}
-                style={[styles.moodBtn, mood === m && styles.moodBtnSelected]}
-              >
+              <TouchableOpacity key={m} onPress={() => setMood(m)} style={[styles.moodBtn, mood === m && styles.moodBtnSelected]}>
                 <Text style={styles.moodText}>{getMoodIcon(m)}</Text>
               </TouchableOpacity>
             ))}
           </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="今日あったことを教えてにゃ🐾"
-            placeholderTextColor="#aaa"
-            value={text}
-            onChangeText={setText}
-            multiline
-          />
-
-          <TouchableOpacity
-            style={[styles.sendBtn, loading && styles.sendBtnDisabled]}
-            onPress={handleCheckin}
-            disabled={loading}
-          >
-            <Text style={styles.sendBtnText}>
-              {loading ? "考え中にゃ..." : "送信するにゃ！"}
-            </Text>
+          <TextInput style={styles.input} placeholder="今日あったことを教えてにゃ🐾" placeholderTextColor="#aaa" value={text} onChangeText={setText} multiline />
+          <TouchableOpacity style={[styles.sendBtn, loading && styles.sendBtnDisabled]} onPress={handleCheckin} disabled={loading}>
+            <Text style={styles.sendBtnText}>{loading ? "考え中にゃ..." : "送信するにゃ！"}</Text>
           </TouchableOpacity>
-
           {response && (
             <View style={styles.responseBox}>
               <Text style={styles.responseLabel}>🐱 猫からの返事</Text>
@@ -192,7 +226,6 @@ export default function App() {
         </View>
 
         <Text style={styles.historyTitle}>📖 過去のきろく</Text>
-        {/* {history.map((item, index) => ( */}
         {Array.isArray(history) && history.map((item, index) => (
           <View key={index} style={styles.historyItem}>
             <View style={styles.historyHeader}>
@@ -210,7 +243,6 @@ export default function App() {
   );
 }
 
-// 🎨 デザイン設定（ログイン画面用の入力枠を追加しました）
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF0F5' },
   loginContainer: { flex: 1, backgroundColor: '#FFF0F5', justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -219,10 +251,16 @@ const styles = StyleSheet.create({
   loginCard: { backgroundColor: 'white', padding: 30, borderRadius: 20, width: '100%', shadowColor: '#FFB6C1', shadowOpacity: 0.3, shadowRadius: 15, elevation: 8 },
   loginPrompt: { fontSize: 18, fontWeight: 'bold', color: '#555', marginBottom: 25, textAlign: 'center' },
   authInput: { backgroundColor: '#FAFAFA', borderRadius: 10, padding: 15, marginBottom: 15, fontSize: 16, borderColor: '#EEE', borderWidth: 1 },
-  loginBtn: { backgroundColor: '#FF9EAA', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 10 },
+  loginBtn: { backgroundColor: '#FF9EAA', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 10, marginTop: 10 },
   loginBtnText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   signupBtn: { backgroundColor: 'transparent', padding: 15, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#FF9EAA' },
   signupBtnText: { color: '#FF9EAA', fontSize: 16, fontWeight: 'bold' },
+  onboardingLabel: { fontSize: 15, fontWeight: 'bold', color: '#555', marginBottom: 10, marginTop: 15 },
+  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 5 },
+  optionBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#FFB6C1', backgroundColor: '#FFF' },
+  optionBtnSelected: { backgroundColor: '#FF9EAA', borderColor: '#FF9EAA' },
+  optionBtnText: { color: '#FF9EAA', fontSize: 14 },
+  optionBtnTextSelected: { color: 'white' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   logoutText: { fontSize: 16, color: '#FF8DA1', fontWeight: 'bold' },
   scrollContent: { padding: 20 },
